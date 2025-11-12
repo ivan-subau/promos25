@@ -5,7 +5,11 @@ const app = express();
 const PORT = 3000;
 
 // Cambia el nombre del archivo JSON si es necesario:
-const KEYFILEPATH = './gen-lang-client-0832181337-82de18481ef3.json';
+const KEYFILEPATH = './credentials.json';
+// Si hay variable de entorno, la usa
+if (process.env.GOOGLE_CREDENTIALS) {
+  require('fs').writeFileSync(KEYFILEPATH, process.env.GOOGLE_CREDENTIALS);
+}
 // Coloca el ID de tu Google Sheet:
 const SHEET_ID = '1yUzTI7Kv2jklmoGyxCS5WasSdRil0EMFk6cYOgcnXtg';
 
