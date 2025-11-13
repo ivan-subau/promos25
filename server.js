@@ -1,29 +1,44 @@
 const express = require('express');
 const { google } = require('googleapis');
 const cors = require('cors');
-const app = express();
-const PORT = 3000;
+const fs = require('fs');
+const path = require('path');
 
-// Cambia el nombre del archivo JSON si es necesario:
-const KEYFILEPATH = './credentials.json';
-// Si hay variable de entorno, la usa
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+let KEYFILEPATH = './credentials.json';
+
+// Si hay variable de entorno, crea el archivo
 if (process.env.GOOGLE_CREDENTIALS) {
-  require('fs').writeFileSync(KEYFILEPATH, process.env.GOOGLE_CREDENTIALS);
+  try {
+    const credsPath = path.join(__dirname, 'credentials.json');
+    fs.writeFileSync(credsPath, process.env.GOOGLE_CREDENTIALS);
+    KEYFILEPATH = credsPath;
+    console.log('✓ Credentials file created from environment variable');
+  } catch (err) {
+    console.error('Error creating credentials file:', err);
+  }
 }
-// Coloca el ID de tu Google Sheet:
+
 const SHEET_ID = '1yUzTI7Kv2jklmoGyxCS5WasSdRil0EMFk6cYOgcnXtg';
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static('.')); // Agrega esta línea
+app.use(express.static('.'));
 
 async function getSheetsService() {
-  const auth = new google.auth.GoogleAuth({
-    keyFile: KEYFILEPATH,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-  });
-  const client = await auth.getClient();
-  return google.sheets({ version: 'v4', auth: client });
+  try {
+    const auth = new google.auth.GoogleAuth({
+      keyFile: KEYFILEPATH,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
+    const client = await auth.getClient();
+    return google.sheets({ version: 'v4', auth: client });
+  } catch (err) {
+    console.error('Error in getSheetsService:', err.message);
+    throw err;
+  }
 }
 
 // Ruta para leer (GET)
@@ -37,7 +52,8 @@ app.get('/leer', async (req, res) => {
     });
     res.json(result.data);
   } catch (err) {
-    res.status(500).json({ error: err.toString() });
+    console.error('Error en /leer:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -46,7 +62,7 @@ app.post('/escribir', async (req, res) => {
   try {
     const sheets = await getSheetsService();
     const { valores } = req.body;
-    const rango = 'Hoja1!A1'; // Cambia el rango según donde quieras escribir
+    const rango = 'Hoja1!A1';
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
@@ -56,10 +72,11 @@ app.post('/escribir', async (req, res) => {
     });
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: err.toString() });
+    console.error('Error en /escribir:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
 app.listen(PORT, () => {
-  console.log('Servidor corriendo en http://localhost:' + PORT);
+  console.log(`Servidor corriendo en http://localhost:${PORT}`);
 });
