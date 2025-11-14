@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRUD - Gestión de Personas</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 10px;
+      padding: 30px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+    h1 { color: #333; margin-bottom: 30px; text-align: center; }
+    
+    .form-section {
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 30px;
+    }
+    
+    .form-group {
+      margin-bottom: 15px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 5px;
+      color: #333;
+      font-weight: bold;
+    }
+    
+    input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-size: 14px;
+    }
+    
+    input:focus { outline: none; border-color: #667eea; }
+    
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+    
+    button {
+      padding: 12px 24px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      transition: background 0.3s;
+      margin-right: 10px;
+    }
+    
+    button:hover { background: #5568d3; }
+    button.delete { background: #dc3545; }
+    button.delete:hover { background: #c82333; }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    
+    table th {
+      background: #667eea;
+      color: white;
+      padding: 12px;
+      text-align: left;
+    }
+    
+    table td {
+      padding: 12px;
+      border-bottom: 1px solid #ddd;
+    }
+    
+    table tr:hover { background: #f8f9fa; }
+    
+    .actions {
+      display: flex;
+      gap: 5px;
+    }
+    
+    .actions button {
+      padding: 6px 12px;
+      font-size: 12px;
+      margin: 0;
+    }
+    
+    .edit { background: #28a745; }
+    .edit:hover { background: #218838; }
+    
+    .message {
+      padding: 12px;
+      margin-bottom: 20px;
+      border-radius: 5px;
+      display: none;
+    }
+    
+    .message.success {
+      background: #d4edda;
+      color: #155724;
+      display: block;
+    }
+    
+    .message.error {
+      background: #f8d7da;
+      color: #721c24;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📋 Gestión de Personas</h1>
+    
+    <div id="message" class="message"></div>
+    
+    <div class="form-section">
+      <h2>Agregar/Editar Persona</h2>
+      <form id="personForm" onsubmit="guardarPersona(event)">
+        <input type="hidden" id="personId">
+        
+        <div class="form-row">
+          <div class="form-group">
+            <label>Nombre</label>
+            <input type="text" id="nombre" required placeholder="Ej: Juan">
+          </div>
+          <div class="form-group">
+            <label>Apellido</label>
+            <input type="text" id="apellido" required placeholder="Ej: Pérez">
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="email" required placeholder="correo@ejemplo.com">
+        </div>
+        
+        <button type="submit" id="submitBtn">Agregar Persona</button>
+        <button type="button" id="cancelBtn" onclick="limpiarFormulario()" style="display:none; background:#6c757d;">Cancelar Edición</button>
+      </form>
+    </div>
+    
+    <h2>Lista de Personas</h2>
+    <table id="personasTable">
+      <thead>
+        <tr>
+          <th>Nombre</th>
+          <th>Apellido</th>
+          <th>Email</th>
+          <th>Fecha Creación</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="tablebody">
+        <tr><td colspan="5" style="text-align:center; padding:20px;">Cargando...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    // Reemplaza con tus credenciales de Supabase
+    const SUPABASE_URL = 'https://ghxrznaulvlizoxisuza.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdoeHJ6bmF1bHZsaXpveGlzdXphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMwMDMxNzgsImV4cCI6MjA3ODU3OTE3OH0.VSY9UiZUl9q35UDDIrN-TcG4TPA0Zp09ABlcvUqYuD0';
+    
+    const { createClient } = window.supabase;
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+    
+    let editandoId = null;
+    
+    async function cargarPersonas() {
+      try {
+        const { data, error } = await supabase
+          .from('personas')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (error) throw error;
+        
+        const tbody = document.getElementById('tablebody');
+        tbody.innerHTML = '';
+        
+        if (data.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No hay personas registradas</td></tr>';
+          return;
+        }
+        
+        data.forEach(persona => {
+          const fecha = new Date(persona.created_at).toLocaleDateString('es-ES');
+          tbody.innerHTML += `
+            <tr>
+              <td>${persona.nombre}</td>
+              <td>${persona.apellido}</td>
+              <td>${persona.email}</td>
+              <td>${fecha}</td>
+              <td>
+                <div class="actions">
+                  <button class="edit" onclick="editarPersona(${persona.id}, '${persona.nombre}', '${persona.apellido}', '${persona.email}')">✏️ Editar</button>
+                  <button class="delete" onclick="eliminarPersona(${persona.id})">🗑️ Eliminar</button>
+                </div>
+              </td>
+            </tr>
+          `;
+        });
+      } catch (error) {
+        mostrarMensaje('Error al cargar personas: ' + error.message, 'error');
+      }
+    }
+    
+    async function guardarPersona(event) {
+      event.preventDefault();
+      
+      const nombre = document.getElementById('nombre').value;
+      const apellido = document.getElementById('apellido').value;
+      const email = document.getElementById('email').value;
+      
+      try {
+        if (editandoId) {
+          // Actualizar
+          const { error } = await supabase
+            .from('personas')
+            .update({ nombre, apellido, email, updated_at: new Date() })
+            .eq('id', editandoId);
+          
+          if (error) throw error;
+          mostrarMensaje('✅ Persona actualizada correctamente', 'success');
+        } else {
+          // Crear
+          const { error } = await supabase
+            .from('personas')
+            .insert([{ nombre, apellido, email }]);
+          
+          if (error) throw error;
+          mostrarMensaje('✅ Persona agregada correctamente', 'success');
+        }
+        
+        limpiarFormulario();
+        cargarPersonas();
+      } catch (error) {
+        mostrarMensaje('❌ Error: ' + error.message, 'error');
+      }
+    }
+    
+    function editarPersona(id, nombre, apellido, email) {
+      document.getElementById('personId').value = id;
+      document.getElementById('nombre').value = nombre;
+      document.getElementById('apellido').value = apellido;
+      document.getElementById('email').value = email;
+      document.getElementById('submitBtn').textContent = 'Actualizar Persona';
+      document.getElementById('cancelBtn').style.display = 'inline-block';
+      editandoId = id;
+      document.getElementById('nombre').focus();
+    }
+    
+    function limpiarFormulario() {
+      document.getElementById('personForm').reset();
+      document.getElementById('personId').value = '';
+      document.getElementById('submitBtn').textContent = 'Agregar Persona';
+      document.getElementById('cancelBtn').style.display = 'none';
+      editandoId = null;
+    }
+    
+    async function eliminarPersona(id) {
+      if (!confirm('¿Estás seguro de que quieres eliminar esta persona?')) return;
+      
+      try {
+        const { error } = await supabase
+          .from('personas')
+          .delete()
+          .eq('id', id);
+        
+        if (error) throw error;
+        mostrarMensaje('✅ Persona eliminada correctamente', 'success');
+        cargarPersonas();
+      } catch (error) {
+        mostrarMensaje('❌ Error: ' + error.message, 'error');
+      }
+    }
+    
+    function mostrarMensaje(texto, tipo) {
+      const msg = document.getElementById('message');
+      msg.textContent = texto;
+      msg.className = 'message ' + tipo;
+      setTimeout(() => msg.className = 'message', 4000);
+    }
+    
+    // Cargar personas al abrir la página
+    cargarPersonas();
+  </script>
+</body>
+</html>
